@@ -23,7 +23,9 @@ jobs:
           # First compile check: obtain real missing-header/compiler errors.
           # This is NOT an EXE yet. Later steps will add the required LithTech
           # model, parser, stream and memory sources to the link step.
-          $includePaths = @(
+          $includePaths = @(  
+            'runtime\shared\src',
+            'tools\shared\engine',
             'sdk\inc',
             'runtime\model\src',
             'runtime\model\src\d3d',
