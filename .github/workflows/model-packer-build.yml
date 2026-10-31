@@ -1,0 +1,52 @@
+name: LithTech Model_Packer Windows build probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  compile-probe:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout LithTech sources
+        uses: actions/checkout@v4
+
+      - name: Locate MSVC tools and try compiling Model_Packer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw 'MSVC Build Tools not available on runner.' }
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path $vcvars)) { throw 'vcvars64.bat missing.' }
+
+          # First compile check: obtain real missing-header/compiler errors.
+          # This is NOT an EXE yet. Later steps will add the required LithTech
+          # model, parser, stream and memory sources to the link step.
+          $includePaths = @(
+            'sdk\inc',
+            'runtime\model\src',
+            'runtime\model\src\d3d',
+            'tools\Model_Packer',
+            'tools\shared\model',
+            'tools\shared\lta',
+            'tools\shared\lta\src',
+            'tools\shared\lta\include',
+            'libs\stdlith',
+            'libs\stdlith\inc',
+            'libs\lith\inc'
+          ) | Where-Object { Test-Path $_ }
+          $includeArgs = ($includePaths | ForEach-Object { '/I"' + (Resolve-Path $_).Path + '"' }) -join ' '
+          New-Item -ItemType Directory -Force build_probe | Out-Null
+          $cmd = 'call "' + $vcvars + '" && cl.exe /nologo /EHsc /W3 /c ' + $includeArgs + ' /Fobuild_probe\Model_Packer.obj tools\Model_Packer\Model_Packer.cpp'
+          Write-Host "Trying compile probe with $($includePaths.Count) include directories"
+          cmd.exe /d /s /c $cmd 2>&1 | Tee-Object -FilePath build_probe\compile.log
+          if ($LASTEXITCODE -ne 0) { throw "Compile probe failed; check build_probe/compile.log and Actions log." }
+
+      - name: Publish compilation diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-packer-compile-probe
+          path: build_probe/
+          if-no-files-found: ignore
