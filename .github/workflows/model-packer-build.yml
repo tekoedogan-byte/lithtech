@@ -20,10 +20,17 @@ jobs:
           $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
           if (-not (Test-Path $vcvars)) { throw 'vcvars64.bat missing.' }
 
-          # First compile check: obtain real missing-header/compiler errors.
-          # This is NOT an EXE yet. Later steps will add the required LithTech
-          # model, parser, stream and memory sources to the link step.
-          $includePaths = @(  
+          # Get the legacy D3DX9 headers on the runner; no local PC install needed.
+          nuget install Microsoft.DXSDK.D3DX -Version 9.29.952.8 -OutputDirectory build_deps -NonInteractive
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet DirectX package installation failed.' }
+          $dxHeader = Get-ChildItem build_deps -Recurse -Filter d3dx9.h -File | Select-Object -First 1
+          if (-not $dxHeader) { throw 'd3dx9.h was not found in the NuGet package.' }
+          $dxInclude = $dxHeader.Directory.FullName
+          Write-Host "DirectX include path: $dxInclude"
+
+          # Diagnostic single-file compile, not a working EXE yet.
+          $includePaths = @(
+            $dxInclude,
             'libs\ltamgr',
             'runtime\kernel\src',
             'runtime\shared\src',
@@ -45,7 +52,7 @@ jobs:
           $cmd = 'call "' + $vcvars + '" && cl.exe /nologo /EHsc /W3 /c ' + $includeArgs + ' /Fobuild_probe\Model_Packer.obj tools\Model_Packer\Model_Packer.cpp'
           Write-Host "Trying compile probe with $($includePaths.Count) include directories"
           cmd.exe /d /s /c $cmd 2>&1 | Tee-Object -FilePath build_probe\compile.log
-          if ($LASTEXITCODE -ne 0) { throw "Compile probe failed; check build_probe/compile.log and Actions log." }
+          if ($LASTEXITCODE -ne 0) { throw 'Compile probe failed; check build_probe/compile.log and Actions log.' }
 
       - name: Publish compilation diagnostics
         if: always()
